@@ -1,0 +1,163 @@
+server.name: kibana
+server.host: "0.0.0.0"
+server.port: 5601
+
+# Elasticsearch connection
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+elasticsearch.username: ${KIBANA_USER}
+elasticsearch.password: ${KIBANA_PASSWORD}
+elasticsearch.ssl.enabled: true
+elasticsearch.ssl.certificateAuthorities: ["/etc/kibana/certs/ca.crt"]
+
+# Security settings
+xpack.security.enabled: true
+xpack.encryptedSavedObjects.encryptionKey: "${ENCRYPTION_KEY}"
+xpack.reporting.enabled: true
+xpack.reporting.encryptionKey: "${REPORTING_KEY}"
+
+# Monitoring settings
+xpack.monitoring.enabled: true
+xpack.monitoring.ui.container.elasticsearch.enabled: true
+xpack.monitoring.ui.container.logstash.enabled: true
+xpack.monitoring.ui.container.kibana.enabled: true
+
+# APM settings
+xpack.apm.enabled: true
+xpack.apm.ui.enabled: true
+xpack.apm.servicesOverrides:
+  - serviceName: "privacy-pal"
+    environment: "production"
+
+# Machine Learning settings
+xpack.ml.enabled: true
+xpack.ml.max_anomaly_records: 1000
+
+# Graph settings
+xpack.graph.enabled: true
+
+# Maps settings
+xpack.maps.enabled: true
+xpack.maps.tilemap.url: "https://tiles.elastic.co/v2/default/{z}/{x}/{y}.png?elastic_tile_service_tos=agree&my_app_name=kibana"
+
+# Canvas settings
+xpack.canvas.enabled: true
+
+# Dashboard settings
+dashboard.enabled: true
+dashboard.defaultAppId: "dashboard"
+
+# Discover settings
+discover.enabled: true
+discover.sampleSize: 500
+
+# Visualize settings
+visualize.enabled: true
+
+# Dev Tools settings
+console.enabled: true
+
+# Search settings
+search.enabled: true
+search.timeout: 30000
+
+# Index patterns
+kibana.index: ".kibana"
+kibana.defaultAppId: "discover"
+
+# Logging settings
+logging:
+  appenders:
+    file:
+      type: file
+      fileName: /var/log/kibana/kibana.log
+      layout:
+        type: pattern
+  root:
+    appenders: [file]
+    level: info
+
+# Saved objects
+savedObjects:
+  maxImportPayloadBytes: 10485760
+  maxImportExportSize: 10000
+
+# Telemetry settings
+telemetry.enabled: true
+telemetry.allowChangingOptInStatus: true
+
+# Custom settings
+custom:
+  # Default time range
+  timeRange:
+    from: "now-15m"
+    to: "now"
+
+  # Default refresh interval
+  refreshInterval:
+    pause: false
+    value: 5
+
+  # Default index pattern
+  defaultIndex: "logs-*"
+
+  # Default columns
+  defaultColumns:
+    - "@timestamp"
+    - "message"
+    - "level"
+    - "service"
+
+  # Custom visualizations
+  visualizations:
+    - name: "Error Rate"
+      type: "line"
+      index: "logs-*"
+      timeField: "@timestamp"
+      interval: "1m"
+      metrics:
+        - type: "count"
+          field: "level"
+          value: "ERROR"
+
+    - name: "Response Time"
+      type: "line"
+      index: "logs-*"
+      timeField: "@timestamp"
+      interval: "1m"
+      metrics:
+        - type: "avg"
+          field: "response_time"
+
+  # Custom dashboards
+  dashboards:
+    - name: "Application Overview"
+      panels:
+        - title: "Error Rate"
+          type: "visualization"
+          visualizationId: "Error Rate"
+        - title: "Response Time"
+          type: "visualization"
+          visualizationId: "Response Time"
+        - title: "System Metrics"
+          type: "visualization"
+          visualizationId: "System Metrics"
+
+  # Custom alerts
+  alerts:
+    - name: "High Error Rate"
+      condition: "count(level:ERROR) > 10"
+      interval: "1m"
+      actions:
+        - type: "email"
+          to: "alerts@privacy-pal.com"
+        - type: "slack"
+          channel: "#alerts"
+
+    - name: "Slow Response Time"
+      condition: "avg(response_time) > 1000"
+      interval: "1m"
+      actions:
+        - type: "email"
+          to: "alerts@privacy-pal.com"
+        - type: "slack"
+          channel: "#alerts" 

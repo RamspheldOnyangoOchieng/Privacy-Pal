@@ -1,0 +1,180 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    monitor: 'privacy-pal'
+    environment: 'production'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - 'alertmanager:9093'
+
+rule_files:
+  - 'alert.rules'
+  - 'recording.rules'
+
+scrape_configs:
+  - job_name: 'privacy-pal'
+    metrics_path: '/metrics'
+    scheme: 'https'
+    tls_config:
+      cert_file: /etc/prometheus/certs/client.crt
+      key_file: /etc/prometheus/certs/client.key
+      ca_file: /etc/prometheus/certs/ca.crt
+    static_configs:
+      - targets: ['privacy-pal:8080']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'elasticsearch'
+    metrics_path: '/_prometheus/metrics'
+    static_configs:
+      - targets: ['elasticsearch:9200']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+  - job_name: 'blackbox'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['blackbox:9115']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '(.*):.*'
+        replacement: '${1}'
+
+remote_write:
+  - url: "https://remote-write-endpoint/api/v1/write"
+    remote_timeout: 30s
+    queue_config:
+      capacity: 2500
+      max_shards: 200
+      max_samples_per_send: 500
+      batch_send_deadline: 5s
+      min_shards: 1
+      max_retries: 10
+      min_backoff: 30ms
+      max_backoff: 100ms
+
+remote_read:
+  - url: "https://remote-read-endpoint/api/v1/read"
+    remote_timeout: 30s
+    read_recent: true
+
+storage:
+  tsdb:
+    path: /prometheus
+    retention:
+      time: 15d
+      size: 512MB
+    wal:
+      retention:
+        time: 12h
+        size: 64MB
+    out_of_order_time_window: 10m
+
+query:
+  lookback_delta: 5m
+  max_concurrency: 20
+  timeout: 2m
+
+rules:
+  groups:
+    - name: privacy-pal
+      rules:
+        - record: job:http_requests_total:rate5m
+          expr: rate(http_requests_total[5m])
+        - record: job:http_request_duration_seconds:p95
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+        - record: job:http_requests_total:errors:rate5m
+          expr: rate(http_requests_total{status=~"5.."}[5m])
+        - record: job:http_requests_total:errors:ratio
+          expr: |
+            sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+
+alerting:
+  groups:
+    - name: privacy-pal
+      rules:
+        - alert: HighErrorRate
+          expr: job:http_requests_total:errors:ratio > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: High error rate detected
+            description: Error rate is above 5% for the last 5 minutes
+
+        - alert: HighLatency
+          expr: job:http_request_duration_seconds:p95 > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High latency detected
+            description: 95th percentile latency is above 1s for the last 5 minutes
+
+        - alert: HighMemoryUsage
+          expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High memory usage
+            description: Memory usage is above 90% for the last 5 minutes
+
+        - alert: HighCPUUsage
+          expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High CPU usage
+            description: CPU usage is above 80% for the last 5 minutes 

@@ -1,0 +1,102 @@
+name: Canary Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      percentage:
+        description: 'Percentage of traffic to route to new version'
+        required: true
+        default: '10'
+      duration:
+        description: 'Duration of canary deployment in minutes'
+        required: true
+        default: '30'
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: privacy-pal-production
+          IMAGE_TAG: canary-${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy canary version
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-production \
+            --service privacy-pal-service \
+            --task-definition privacy-pal-task-definition \
+            --desired-count 2 \
+            --force-new-deployment
+
+      - name: Update ALB target group weights
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.ALB_TARGET_GROUP_ARN }},Weight=${{ 100 - github.event.inputs.percentage }} \
+            --actions Type=forward,TargetGroupArn=${{ secrets.ALB_CANARY_TARGET_GROUP_ARN }},Weight=${{ github.event.inputs.percentage }}
+
+      - name: Run canary tests
+        run: |
+          npm run test:canary
+
+      - name: Monitor canary metrics
+        run: |
+          ./scripts/monitor-canary.sh ${{ github.event.inputs.duration }}
+
+      - name: Check canary health
+        id: health-check
+        run: |
+          if [ "$(./scripts/check-canary-health.sh)" = "healthy" ]; then
+            echo "::set-output name=healthy::true"
+          else
+            echo "::set-output name=healthy::false"
+          fi
+
+      - name: Promote canary
+        if: steps.health-check.outputs.healthy == 'true'
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.ALB_CANARY_TARGET_GROUP_ARN }},Weight=100
+
+      - name: Rollback canary
+        if: steps.health-check.outputs.healthy == 'false'
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.ALB_TARGET_GROUP_ARN }},Weight=100
+          aws ecs update-service \
+            --cluster privacy-pal-production \
+            --service privacy-pal-service \
+            --task-definition privacy-pal-task-definition \
+            --desired-count 1
+
+      - name: Notify on Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always() 

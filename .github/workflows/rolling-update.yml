@@ -1,0 +1,117 @@
+name: Rolling Update Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+      batch_size:
+        description: 'Number of instances to update at once'
+        required: true
+        default: '1'
+      wait_time:
+        description: 'Wait time between batches in minutes'
+        required: true
+        default: '5'
+
+jobs:
+  rolling-update:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: privacy-pal-${{ github.event.inputs.environment }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Get current task count
+        id: get-count
+        run: |
+          TASK_COUNT=$(aws ecs describe-services \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --services privacy-pal-service \
+            --query 'services[0].desiredCount' \
+            --output text)
+          echo "::set-output name=count::$TASK_COUNT"
+
+      - name: Calculate batches
+        id: calculate-batches
+        run: |
+          TOTAL_TASKS=${{ steps.get-count.outputs.count }}
+          BATCH_SIZE=${{ github.event.inputs.batch_size }}
+          BATCHES=$(( (TOTAL_TASKS + BATCH_SIZE - 1) / BATCH_SIZE ))
+          echo "::set-output name=batches::$BATCHES"
+
+      - name: Perform rolling update
+        run: |
+          for ((i=0; i<${{ steps.calculate-batches.outputs.batches }}; i++)); do
+            echo "Updating batch $((i+1)) of ${{ steps.calculate-batches.outputs.batches }}"
+            
+            # Update batch of instances
+            aws ecs update-service \
+              --cluster privacy-pal-${{ github.event.inputs.environment }} \
+              --service privacy-pal-service \
+              --task-definition privacy-pal-task-definition \
+              --desired-count $(( ${{ steps.get-count.outputs.count }} + ${{ github.event.inputs.batch_size }} )) \
+              --force-new-deployment
+
+            # Wait for batch to stabilize
+            aws ecs wait services-stable \
+              --cluster privacy-pal-${{ github.event.inputs.environment }} \
+              --services privacy-pal-service
+
+            # Run health checks
+            ./scripts/health-check.sh batch-$((i+1))
+
+            # Wait between batches
+            if [ $i -lt $(( ${{ steps.calculate-batches.outputs.batches }} - 1 )) ]; then
+              sleep $(( ${{ github.event.inputs.wait_time }} * 60 ))
+            fi
+          done
+
+      - name: Verify deployment
+        run: |
+          ./scripts/verify-deployment.sh
+
+      - name: Notify on Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Create deployment record
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ github.event.inputs.environment }}',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'Rolling update deployment to ${{ github.event.inputs.environment }}'
+            }) 

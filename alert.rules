@@ -1,0 +1,389 @@
+groups:
+  - name: privacy_pal_alerts
+    rules:
+      # System Health Alerts
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High error rate detected
+          description: "Error rate is {{ $value }} for the last 5 minutes"
+
+      - alert: HighLatency
+        expr: http_request_duration_seconds{quantile="0.9"} > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High latency detected
+          description: "90th percentile latency is {{ $value }}s"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Service is down
+          description: "{{ $labels.job }} has been down for more than 1 minute"
+
+      # Resource Usage Alerts
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High memory usage
+          description: "Memory usage is {{ $value }}%"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High CPU usage
+          description: "CPU usage is {{ $value }}%"
+
+      # Security Alerts
+      - alert: HighFailedLoginAttempts
+        expr: rate(auth_failed_attempts_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High number of failed login attempts
+          description: "{{ $value }} failed login attempts in the last 5 minutes"
+
+      - alert: SuspiciousIPActivity
+        expr: rate(suspicious_ip_requests_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Suspicious IP activity detected
+          description: "{{ $value }} suspicious requests from IP in the last 5 minutes"
+
+      # Application Specific Alerts
+      - alert: HighReportSubmissionRate
+        expr: rate(report_submissions_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Unusually high report submission rate
+          description: "{{ $value }} reports submitted in the last 5 minutes"
+
+      - alert: HighMediaUploadRate
+        expr: rate(media_uploads_total[5m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High media upload rate
+          description: "{{ $value }} media files uploaded in the last 5 minutes"
+
+      # Database Alerts
+      - alert: HighDatabaseConnections
+        expr: db_connections_active > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High number of database connections
+          description: "{{ $value }} active database connections"
+
+      - alert: SlowDatabaseQueries
+        expr: rate(db_query_duration_seconds_sum[5m]) / rate(db_query_duration_seconds_count[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow database queries detected
+          description: "Average query duration is {{ $value }}s"
+
+      # Network Alerts
+      - alert: HighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total[5m]) > 1000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High network traffic
+          description: "{{ $value }} bytes received in the last 5 minutes"
+
+      - alert: HighNetworkErrors
+        expr: rate(node_network_transmit_errs_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Network errors detected
+          description: "{{ $value }} network errors in the last 5 minutes"
+
+      # Enhanced Application Metrics
+      - alert: HighReportProcessingTime
+        expr: histogram_quantile(0.95, rate(report_processing_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow report processing
+          description: "95th percentile report processing time is {{ $value }}s"
+
+      - alert: HighMediaProcessingTime
+        expr: histogram_quantile(0.95, rate(media_processing_duration_seconds_bucket[5m])) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow media processing
+          description: "95th percentile media processing time is {{ $value }}s"
+
+      - alert: HighEncryptionLatency
+        expr: histogram_quantile(0.95, rate(encryption_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High encryption latency
+          description: "95th percentile encryption time is {{ $value }}s"
+
+      # User Experience Metrics
+      - alert: HighPageLoadTime
+        expr: histogram_quantile(0.95, rate(page_load_duration_seconds_bucket[5m])) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow page loads
+          description: "95th percentile page load time is {{ $value }}s"
+
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, rate(api_response_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow API responses
+          description: "95th percentile API response time is {{ $value }}s"
+
+      # Enhanced Security Metrics
+      - alert: HighEncryptionFailures
+        expr: rate(encryption_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Encryption failures detected
+          description: "{{ $value }} encryption failures in the last 5 minutes"
+
+      - alert: HighDecryptionFailures
+        expr: rate(decryption_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Decryption failures detected
+          description: "{{ $value }} decryption failures in the last 5 minutes"
+
+      - alert: SuspiciousFileUploads
+        expr: rate(suspicious_file_uploads_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Suspicious file uploads detected
+          description: "{{ $value }} suspicious file uploads in the last 5 minutes"
+
+      # Enhanced Database Metrics
+      - alert: HighQueryLatency
+        expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow database queries
+          description: "95th percentile query duration is {{ $value }}s"
+
+      - alert: HighTransactionLatency
+        expr: histogram_quantile(0.95, rate(db_transaction_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Slow database transactions
+          description: "95th percentile transaction duration is {{ $value }}s"
+
+      # Enhanced Network Metrics
+      - alert: HighBandwidthUsage
+        expr: rate(network_bytes_total[5m]) > 10000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High bandwidth usage
+          description: "{{ $value }} bytes transferred in the last 5 minutes"
+
+      - alert: HighPacketLoss
+        expr: rate(network_packet_loss_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High packet loss
+          description: "{{ $value }}% packet loss in the last 5 minutes"
+
+      # Enhanced Application Health
+      - alert: HighErrorRateByEndpoint
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High error rate for endpoint
+          description: "{{ $labels.path }} has {{ $value }}% error rate"
+
+      - alert: HighLatencyByEndpoint
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High latency for endpoint
+          description: "{{ $labels.path }} has {{ $value }}s 95th percentile latency"
+
+      # Enhanced Application Performance Metrics
+      - alert: HighReportProcessingQueue
+        expr: report_processing_queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High report processing queue
+          description: "{{ $value }} reports waiting in queue"
+
+      - alert: HighMediaProcessingQueue
+        expr: media_processing_queue_size > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High media processing queue
+          description: "{{ $value }} media files waiting in queue"
+
+      - alert: HighEncryptionQueue
+        expr: encryption_queue_size > 200
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High encryption queue
+          description: "{{ $value }} items waiting for encryption"
+
+      # Enhanced User Experience Metrics
+      - alert: HighClientErrorRate
+        expr: rate(http_requests_total{status=~"4.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High client error rate
+          description: "{{ $value }}% of requests are client errors"
+
+      - alert: HighServerErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High server error rate
+          description: "{{ $value }}% of requests are server errors"
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(api_latency_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High API latency
+          description: "95th percentile API latency is {{ $value }}s"
+
+      # Enhanced Security Metrics
+      - alert: HighAuthenticationFailures
+        expr: rate(auth_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High authentication failures
+          description: "{{ $value }} authentication failures in the last 5 minutes"
+
+      - alert: HighAuthorizationFailures
+        expr: rate(authz_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: High authorization failures
+          description: "{{ $value }} authorization failures in the last 5 minutes"
+
+      - alert: HighRateLimitHits
+        expr: rate(rate_limit_hits_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate limit hits
+          description: "{{ $value }} rate limit hits in the last 5 minutes"
+
+      # Enhanced Database Metrics
+      - alert: HighDatabaseDeadlocks
+        expr: rate(db_deadlocks_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Database deadlocks detected
+          description: "{{ $value }} deadlocks in the last 5 minutes"
+
+      # Enhanced Network Metrics
+      - alert: HighNetworkLatency
+        expr: histogram_quantile(0.95, rate(network_latency_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High network latency
+          description: "95th percentile network latency is {{ $value }}s"
+
+      - alert: HighNetworkErrors
+        expr: rate(network_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Network errors detected
+          description: "{{ $value }} network errors in the last 5 minutes"
+
+      # Enhanced Application Health
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High disk usage
+          description: "Disk usage is {{ $value }}%"
+
+      - alert: HighUserRegistrationRate
+        expr: rate(user_registrations_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: High user registration rate
+          description: "{{ $value }} new user registrations in the last 5 minutes" 

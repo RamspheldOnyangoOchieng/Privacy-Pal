@@ -1,0 +1,146 @@
+cluster.name: privacy-pal
+node.name: ${HOSTNAME}
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery settings
+discovery.seed_hosts: ["elasticsearch-1", "elasticsearch-2", "elasticsearch-3"]
+cluster.initial_master_nodes: ["elasticsearch-1", "elasticsearch-2", "elasticsearch-3"]
+
+# Memory settings
+bootstrap.memory_lock: true
+ES_JAVA_OPTS: "-Xms2g -Xmx2g"
+
+# Security settings
+xpack.security.enabled: true
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
+xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+
+# Monitoring settings
+xpack.monitoring.enabled: true
+xpack.monitoring.collection.enabled: true
+
+# Index settings
+action.destructive_requires_name: true
+indices.query.bool.max_clause_count: 8192
+
+# Logging settings
+logger.level: INFO
+logger.prefix: [${HOSTNAME}]
+
+# Snapshot settings
+path.repo: ["/usr/share/elasticsearch/snapshots"]
+
+# Cross-cluster search settings
+search.remote.connect: true
+
+# Index lifecycle management
+xpack.ilm.enabled: true
+
+# Index templates
+index.template.settings:
+  number_of_shards: 3
+  number_of_replicas: 1
+  refresh_interval: 1s
+
+# Index patterns
+index.patterns:
+  - pattern: "logs-*"
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 1
+  - pattern: "metrics-*"
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 1
+
+# Retention settings
+xpack.ilm.policies:
+  logs_policy:
+    phases:
+      hot:
+        min_age: 0ms
+        actions:
+          rollover:
+            max_age: 7d
+            max_size: 50gb
+      warm:
+        min_age: 7d
+        actions:
+          forcemerge:
+            max_num_segments: 1
+      cold:
+        min_age: 30d
+        actions:
+          shrink:
+            number_of_shards: 1
+      delete:
+        min_age: 90d
+        actions:
+          delete: {}
+
+# Snapshot lifecycle management
+xpack.slm.enabled: true
+xpack.slm.policies:
+  daily_snapshot:
+    schedule: "0 0 * * * ?"
+    name: "daily-snapshot-{now/d}"
+    repository: "backup-repo"
+    config:
+      indices: ["*"]
+      ignore_unavailable: true
+      include_global_state: true
+
+# Cross-cluster replication
+xpack.ccr.enabled: true
+
+# Machine learning
+xpack.ml.enabled: true
+xpack.ml.max_open_jobs: 20
+
+# Transform
+xpack.transform.enabled: true
+
+# Watcher
+xpack.watcher.enabled: true
+
+# Graph
+xpack.graph.enabled: true
+
+# Reporting
+xpack.reporting.enabled: true
+
+# Security audit
+xpack.security.audit.enabled: true
+xpack.security.audit.outputs: ["index"]
+xpack.security.audit.index.name: "audit-{now/d}"
+
+# Cross-cluster search
+search.remote.connect: true
+
+# Index lifecycle management
+xpack.ilm.enabled: true
+
+# Snapshot lifecycle management
+xpack.slm.enabled: true
+
+# Machine learning
+xpack.ml.enabled: true
+
+# Transform
+xpack.transform.enabled: true
+
+# Watcher
+xpack.watcher.enabled: true
+
+# Graph
+xpack.graph.enabled: true
+
+# Reporting
+xpack.reporting.enabled: true
+
+# Security audit
+xpack.security.audit.enabled: true 

@@ -1,23 +1,95 @@
-# FileVault
+# Privacy Pal
 
-FileVault is a file storage application that allows you to upload files from your local computer and store them onchain. FileVault uses Internet Identity (II) for user login and authentication. Once files are uploaded, they can be downloaded at a later time, or they can be deleted.
+Privacy Pal is a decentralized application designed to empower users with tools for privacy-preserving reporting and content moderation, built on the Internet Computer Protocol (ICP).
 
-This application's logic is written in [Motoko](https://internetcomputer.org/docs/motoko/main/getting-started/motoko-introduction), a programming language designed specifically for developing canisters on ICP.
+## Project Structure
 
-## Deploying from ICP Ninja
+This project follows a standard structure for applications on the Internet Computer, with distinct `frontend` and `backend` components.
 
-When viewing this project in ICP Ninja, you can deploy it directly to the mainnet for free by clicking "Deploy" in the upper right corner. Open this project in ICP Ninja:
+- `src/backend`: Contains the Motoko-based ICP canisters responsible for core logic, data storage, moderation, and identity management.
+- `src/frontend`: Houses the React and TypeScript-based user interface.
+- `docs`: Comprehensive documentation covering architecture, API, and development guidelines.
 
-[![](https://icp.ninja/assets/open.svg)](https://icp.ninja/i?g=https://github.com/dfinity/examples/motoko/filevault)
+## Core Technologies
 
-## Project structure
+### Backend (ICP Canisters)
 
-The `/backend` folder contains the Motoko canister, `app.mo`. The `/frontend` folder contains web assets for the application's user interface. The user interface is written using the React framework. Edit the `mops.toml` file to add [Motoko dependencies](https://mops.one/) to the project.
+- **Motoko**: The primary language for writing secure and efficient smart contracts (canisters) on the Internet Computer.
 
-## Build and deploy from the command-line
+### Frontend
 
-To migrate your ICP Ninja project off of the web browser and develop it locally, follow these steps. These steps are necessary if you want to deploy this project for long-term, production use on the mainnet.
+- **TypeScript/JavaScript**: For building a robust and type-safe user interface.
+- **React**: A popular JavaScript library for building interactive UIs.
 
-### 1. Download your project from ICP Ninja using the 'Download files' button on the upper left corner under the pink ninja star icon.
+### Infrastructure
 
-### 2. Open the `BUILD.md` file for further instructions.
+- **Internet Computer Protocol (ICP)**: The decentralized cloud platform hosting the application's backend canisters.
+- **Internet Identity**: Provides secure, anonymous, and device-based authentication for users.
+
+## Getting Started
+
+To set up and run Privacy Pal locally, follow these steps:
+
+### Prerequisites
+
+- **DFX (Internet Computer SDK)**: Install DFX by following the instructions on the [official DFX documentation](https://sdk.dfinity.org/docs/index.html).
+- **Node.js & npm**: Ensure you have Node.js (LTS version recommended) and npm installed.
+- **Git**: For version control.
+
+### Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/your-repo/privacy-pal.git
+   cd privacy-pal
+   ```
+
+2. **Install frontend dependencies:**
+
+   ```bash
+   npm install
+   ```
+
+### Building and Deploying Canisters (Backend)
+
+1. **Start the local Internet Computer replica:**
+
+   ```bash
+   dfx start --background
+   ```
+
+2. **Deploy the backend canisters:**
+
+   ```bash
+   dfx deploy
+   ```
+
+   This command will compile and deploy the `report`, `moderation`, `identity`, and `storage` canisters to your local replica.
+
+### Running the Frontend
+
+1. **Start the frontend development server:**
+
+   ```bash
+   npm start
+   ```
+
+   This will typically open the application in your web browser at `http://localhost:8080` (or a similar port).
+
+## Canister Overview (Phase 1: Core Infrastructure)
+
+As part of the initial phase, the following core canisters are set up:
+
+- **Report Canister**: Handles the submission, status tracking, and retrieval of encrypted reports.
+- **Moderation Canister**: Manages the moderation process, including vote submission and consensus calculation.
+- **Identity Canister**: Provides anonymous session management and device-based authentication.
+- **Storage Canister**: A generic canister for storing encrypted data, used by other canisters for persistent storage.
+
+Common type definitions used across these canisters have been centralized in `src/backend/common/types/common_types.mo` for better organization and maintainability.
+
+## Next Steps
+
+- Implement advanced security features like zero-knowledge proofs.
+- Enhance content moderation with AI components.
+- Further develop the frontend user experience and add more pages/components.

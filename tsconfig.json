@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/frontend/src/components/*"],
+      "@pages/*": ["src/frontend/src/pages/*"],
+      "@hooks/*": ["src/frontend/src/hooks/*"],
+      "@context/*": ["src/frontend/src/context/*"],
+      "@services/*": ["src/frontend/src/services/*"],
+      "@utils/*": ["src/frontend/src/utils/*"],
+      "@types/*": ["src/frontend/src/types/*"],
+      "@styles/*": ["src/frontend/src/styles/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+} 

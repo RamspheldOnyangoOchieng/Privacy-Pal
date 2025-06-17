@@ -1,0 +1,70 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/privacy-pal/*.log
+  fields:
+    app: privacy-pal
+  fields_under_root: true
+  json.keys_under_root: true
+  json.add_error_key: true
+
+- type: log
+  enabled: true
+  paths:
+    - /var/log/privacy-pal-api/*.log
+  fields:
+    app: privacy-pal-api
+  fields_under_root: true
+  json.keys_under_root: true
+  json.add_error_key: true
+
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        environment: ${ENVIRONMENT}
+        service: privacy-pal
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  username: ${ES_USER}
+  password: ${ES_PASSWORD}
+  index: "privacy-pal-%{+yyyy.MM.dd}"
+  pipeline: "privacy-pal"
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]
+  ssl.certificate: "/etc/filebeat/certs/client.crt"
+  ssl.key: "/etc/filebeat/certs/client.key"
+
+setup.kibana:
+  host: "kibana:5601"
+  username: ${KIBANA_USER}
+  password: ${KIBANA_PASSWORD}
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]
+  ssl.certificate: "/etc/filebeat/certs/client.crt"
+  ssl.key: "/etc/filebeat/certs/client.key"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+xpack.monitoring:
+  enabled: true
+  elasticsearch:
+    hosts: ["elasticsearch:9200"]
+    username: ${ES_USER}
+    password: ${ES_PASSWORD}
+    ssl.enabled: true
+    ssl.certificate_authorities: ["/etc/filebeat/certs/ca.crt"]
+    ssl.certificate: "/etc/filebeat/certs/client.crt"
+    ssl.key: "/etc/filebeat/certs/client.key" 

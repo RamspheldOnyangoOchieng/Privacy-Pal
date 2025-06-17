@@ -1,0 +1,186 @@
+sampling:
+  default_strategy:
+    type: probabilistic
+    param: 0.1
+  service_strategies:
+    - service: privacy-pal
+      type: probabilistic
+      param: 0.1
+    - service: privacy-pal-api
+      type: probabilistic
+      param: 0.1
+    - service: privacy-pal-db
+      type: probabilistic
+      param: 0.1
+
+storage:
+  type: elasticsearch
+  options:
+    es:
+      server_urls: http://elasticsearch:9200
+      username: ${ES_USER}
+      password: ${ES_PASSWORD}
+      index_prefix: jaeger
+      max_span_age: 168h
+      max_doc_count: 10000
+      bulk_size: 1000
+      bulk_workers: 1
+      timeout: 5s
+      sniff: false
+      tls:
+        enabled: true
+        ca_file: /etc/jaeger/certs/ca.crt
+        cert_file: /etc/jaeger/certs/client.crt
+        key_file: /etc/jaeger/certs/client.key
+
+ingester:
+  kafka:
+    topic: jaeger-spans
+    brokers: kafka:9092
+    group_id: jaeger-ingester
+    encoding: json
+    parallel: 10
+    max_processing_time: 100ms
+    tls:
+      enabled: true
+      ca_file: /etc/jaeger/certs/ca.crt
+      cert_file: /etc/jaeger/certs/client.crt
+      key_file: /etc/jaeger/certs/client.key
+
+query:
+  base_path: /jaeger
+  static_files: /jaeger-ui/build
+  port: 16686
+  query_port: 16686
+  query_base_path: /jaeger
+  query_static_files: /jaeger-ui/build
+  dependencies:
+    menuEnabled: true
+    menuUrl: /api/dependencies
+  menu:
+    - label: "Documentation"
+      url: "https://jaeger.readthedocs.io/en/latest/"
+    - label: "GitHub"
+      url: "https://github.com/jaegertracing/jaeger"
+
+collector:
+  zipkin:
+    host_port: :9411
+  jaeger:
+    grpc:
+      host_port: :14250
+    thrift_binary:
+      host_port: :6832
+    thrift_compact:
+      host_port: :6831
+    thrift_http:
+      host_port: :14268
+  otlp:
+    grpc:
+      host_port: :4317
+    http:
+      host_port: :4318
+
+agent:
+  http_server:
+    host_port: :5778
+  grpc_server:
+    host_port: :14250
+  zipkin:
+    host_port: :5775
+  jaeger:
+    thrift_binary:
+      host_port: :6832
+    thrift_compact:
+      host_port: :6831
+    thrift_http:
+      host_port: :14268
+
+metrics:
+  backend: prometheus
+  prometheus:
+    endpoint: /metrics
+    port: 14269
+    prefix: jaeger_
+
+logging:
+  level: info
+  format: json
+  output: stdout
+
+tracing:
+  sampler:
+    type: const
+    param: 1
+  reporter:
+    queueSize: 100
+    bufferFlushInterval: 1s
+    logSpans: true
+    localAgentHostPort: localhost:6831
+
+archive:
+  enabled: true
+  storage:
+    type: elasticsearch
+    options:
+      es:
+        server_urls: http://elasticsearch:9200
+        username: ${ES_USER}
+        password: ${ES_PASSWORD}
+        index_prefix: jaeger-archive
+        max_span_age: 720h
+        max_doc_count: 10000
+        bulk_size: 1000
+        bulk_workers: 1
+        timeout: 5s
+        sniff: false
+        tls:
+          enabled: true
+          ca_file: /etc/jaeger/certs/ca.crt
+          cert_file: /etc/jaeger/certs/client.crt
+          key_file: /etc/jaeger/certs/client.key
+
+grpc_plugin:
+  storage:
+    type: elasticsearch
+    options:
+      es:
+        server_urls: http://elasticsearch:9200
+        username: ${ES_USER}
+        password: ${ES_PASSWORD}
+        index_prefix: jaeger
+        max_span_age: 168h
+        max_doc_count: 10000
+        bulk_size: 1000
+        bulk_workers: 1
+        timeout: 5s
+        sniff: false
+        tls:
+          enabled: true
+          ca_file: /etc/jaeger/certs/ca.crt
+          cert_file: /etc/jaeger/certs/client.crt
+          key_file: /etc/jaeger/certs/client.key
+
+security:
+  authentication: bearer
+  authorization:
+    enabled: true
+    policies:
+      - service: privacy-pal
+        permissions:
+          - operation: read
+            roles: [admin, user]
+          - operation: write
+            roles: [admin]
+      - service: privacy-pal-api
+        permissions:
+          - operation: read
+            roles: [admin, user]
+          - operation: write
+            roles: [admin]
+      - service: privacy-pal-db
+        permissions:
+          - operation: read
+            roles: [admin]
+          - operation: write
+            roles: [admin] 

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "service": "privacy-pal",
+  "environment": "production",
+  "agent": {
+    "host": "localhost",
+    "port": 8126
+  },
+  "tracing": {
+    "enabled": true,
+    "debug": false,
+    "analytics_enabled": true,
+    "sample_rate": 1.0,
+    "sampling_rules": [
+      {
+        "service": "privacy-pal",
+        "name": "web.request",
+        "sample_rate": 1.0
+      },
+      {
+        "service": "privacy-pal",
+        "name": "db.query",
+        "sample_rate": 0.5
+      }
+    ]
+  },
+  "profiling": {
+    "enabled": true,
+    "debug": false,
+    "period": 1000,
+    "cpu_profiler": true,
+    "allocation_profiler": true,
+    "wall_profiler": true
+  },
+  "runtime_metrics": {
+    "enabled": true,
+    "period": 1000
+  },
+  "logs": {
+    "enabled": true,
+    "level": "info",
+    "format": "json",
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "metrics": {
+    "enabled": true,
+    "period": 1000,
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "apm": {
+    "enabled": true,
+    "debug": false,
+    "analytics_enabled": true,
+    "sample_rate": 1.0,
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "security": {
+    "enabled": true,
+    "debug": false,
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "rum": {
+    "enabled": true,
+    "debug": false,
+    "sample_rate": 1.0,
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "synthetics": {
+    "enabled": true,
+    "debug": false,
+    "tags": {
+      "service": "privacy-pal",
+      "environment": "production"
+    }
+  },
+  "integrations": {
+    "express": {
+      "enabled": true,
+      "analytics_enabled": true,
+      "sample_rate": 1.0
+    },
+    "http": {
+      "enabled": true,
+      "analytics_enabled": true,
+      "sample_rate": 1.0
+    },
+    "mongodb": {
+      "enabled": true,
+      "analytics_enabled": true,
+      "sample_rate": 0.5
+    },
+    "redis": {
+      "enabled": true,
+      "analytics_enabled": true,
+      "sample_rate": 0.5
+    }
+  }
+} 

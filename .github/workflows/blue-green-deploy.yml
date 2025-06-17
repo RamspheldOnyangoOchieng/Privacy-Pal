@@ -1,0 +1,116 @@
+name: Blue-Green Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+      switch_timeout:
+        description: 'Timeout for traffic switch in minutes'
+        required: true
+        default: '5'
+
+jobs:
+  blue-green:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: privacy-pal-${{ github.event.inputs.environment }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Get current deployment color
+        id: get-color
+        run: |
+          CURRENT_COLOR=$(aws elbv2 describe-target-groups --names privacy-pal-${{ github.event.inputs.environment }} | jq -r '.TargetGroups[0].TargetGroupArn')
+          if [[ $CURRENT_COLOR == *"blue"* ]]; then
+            echo "::set-output name=current::blue"
+            echo "::set-output name=next::green"
+          else
+            echo "::set-output name=current::green"
+            echo "::set-output name=next::blue"
+          fi
+
+      - name: Deploy new version
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --service privacy-pal-${{ steps.get-color.outputs.next }} \
+            --task-definition privacy-pal-task-definition \
+            --force-new-deployment
+
+      - name: Wait for new deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --services privacy-pal-${{ steps.get-color.outputs.next }}
+
+      - name: Run health checks
+        run: |
+          ./scripts/health-check.sh ${{ steps.get-color.outputs.next }}
+
+      - name: Switch traffic
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.ALB_TARGET_GROUP_ARN_PREFIX }}-${{ steps.get-color.outputs.next }}
+
+      - name: Wait for traffic switch
+        run: |
+          sleep $(( ${{ github.event.inputs.switch_timeout }} * 60 ))
+
+      - name: Verify new deployment
+        run: |
+          ./scripts/verify-deployment.sh ${{ steps.get-color.outputs.next }}
+
+      - name: Cleanup old deployment
+        if: success()
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --service privacy-pal-${{ steps.get-color.outputs.current }} \
+            --desired-count 0
+
+      - name: Notify on Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Create deployment record
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ github.event.inputs.environment }}',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'Blue-Green deployment to ${{ github.event.inputs.environment }}'
+            }) 

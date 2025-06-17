@@ -1,0 +1,117 @@
+name: A/B Testing Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+      variant_percentage:
+        description: 'Percentage of traffic for variant B'
+        required: true
+        default: '50'
+      test_duration:
+        description: 'Duration of A/B test in hours'
+        required: true
+        default: '24'
+
+jobs:
+  ab-testing:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: privacy-pal-${{ github.event.inputs.environment }}
+          IMAGE_TAG_A: ${{ github.sha }}-a
+          IMAGE_TAG_B: ${{ github.sha }}-b
+        run: |
+          # Build variant A
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG_A --build-arg VARIANT=A .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG_A
+          
+          # Build variant B
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG_B --build-arg VARIANT=B .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG_B
+
+      - name: Deploy variant A
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --service privacy-pal-service-a \
+            --task-definition privacy-pal-task-definition-a \
+            --force-new-deployment
+
+      - name: Deploy variant B
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --service privacy-pal-service-b \
+            --task-definition privacy-pal-task-definition-b \
+            --force-new-deployment
+
+      - name: Configure traffic distribution
+        run: |
+          aws elbv2 modify-listener \
+            --listener-arn ${{ secrets.ALB_LISTENER_ARN }} \
+            --default-actions Type=forward,TargetGroupArn=${{ secrets.TARGET_GROUP_A_ARN }},Weight=100 \
+            --actions \
+              Type=forward,TargetGroupArn=${{ secrets.TARGET_GROUP_A_ARN }},Weight=$((100 - ${{ github.event.inputs.variant_percentage }})) \
+              Type=forward,TargetGroupArn=${{ secrets.TARGET_GROUP_B_ARN }},Weight=${{ github.event.inputs.variant_percentage }}
+
+      - name: Wait for deployments to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --services privacy-pal-service-a privacy-pal-service-b
+
+      - name: Run health checks
+        run: |
+          ./scripts/health-check.sh variant-a
+          ./scripts/health-check.sh variant-b
+
+      - name: Start A/B test monitoring
+        run: |
+          ./scripts/start-ab-test.sh \
+            --duration ${{ github.event.inputs.test_duration }} \
+            --variant-a ${{ secrets.TARGET_GROUP_A_ARN }} \
+            --variant-b ${{ secrets.TARGET_GROUP_B_ARN }}
+
+      - name: Notify on Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Create deployment record
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ github.event.inputs.environment }}',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'A/B test deployment to ${{ github.event.inputs.environment }}'
+            }) 

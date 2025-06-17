@@ -1,0 +1,103 @@
+name: Feature Flag Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+      feature_name:
+        description: 'Name of the feature to deploy'
+        required: true
+      target_users:
+        description: 'Percentage of users to enable the feature for'
+        required: true
+        default: '10'
+      rollout_duration:
+        description: 'Duration of gradual rollout in hours'
+        required: true
+        default: '24'
+
+jobs:
+  feature-flag:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: privacy-pal-${{ github.event.inputs.environment }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Update feature flag configuration
+        run: |
+          aws dynamodb update-item \
+            --table-name feature-flags \
+            --key '{"feature_name": {"S": "${{ github.event.inputs.feature_name }}"}}' \
+            --update-expression "SET target_users = :tu, rollout_start = :rs, rollout_duration = :rd" \
+            --expression-attribute-values '{":tu": {"N": "${{ github.event.inputs.target_users }}"}, ":rs": {"S": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"}, ":rd": {"N": "${{ github.event.inputs.rollout_duration }}"}}'
+
+      - name: Deploy application
+        run: |
+          aws ecs update-service \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --service privacy-pal-service \
+            --task-definition privacy-pal-task-definition \
+            --force-new-deployment
+
+      - name: Wait for deployment to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster privacy-pal-${{ github.event.inputs.environment }} \
+            --services privacy-pal-service
+
+      - name: Run health checks
+        run: |
+          ./scripts/health-check.sh
+
+      - name: Start feature flag monitoring
+        run: |
+          ./scripts/monitor-feature-flag.sh \
+            --feature "${{ github.event.inputs.feature_name }}" \
+            --duration "${{ github.event.inputs.rollout_duration }}"
+
+      - name: Notify on Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Create deployment record
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ github.event.inputs.environment }}',
+              auto_merge: false,
+              required_contexts: [],
+              description: 'Feature flag deployment for ${{ github.event.inputs.feature_name }} to ${{ github.event.inputs.environment }}'
+            }) 
